@@ -14,7 +14,7 @@ from solbot.utils import format_number, price_percent_change_to_float
 from solbot.secret import LARK_KEY
 
 
-def lambda_handler(event=None, context=None):
+def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -141,7 +141,7 @@ def lambda_handler(event=None, context=None):
 
     def link_pools(pool):
         address = pool_to_address[pool]
-        return f"[{pool}]({solscan_url + address})"
+        return f"**[{pool}]({solscan_url + address})**"
 
     top_gainers_title = "**Top Gainers 🚀**"
     top_gainers_title_element = LarkClient.generate_markdown_element(top_gainers_title)
@@ -196,6 +196,15 @@ def lambda_handler(event=None, context=None):
     print(f"[lambda_function] -- {resp.text}")
 
     return {"statusCode": 200}
+
+
+def lambda_handler(event=None, context=None):
+    for _ in range(5):
+        try:
+            main()
+            return
+        except Exception as err:
+            print(err)
 
 
 if __name__ == "__main__":
