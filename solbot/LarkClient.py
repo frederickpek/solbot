@@ -6,6 +6,7 @@ MONEY = lambda x: f"${x:,.2f}"
 RED = lambda x: f"<font color='red'>{x}</red>"
 GREEN = lambda x: f"<font color='green'>{x}</font>"
 GREY = lambda x: f"<font color='grey'>{x}</grey>"
+HREF = lambda x, link: f"[{x}]({link})"
 
 HORIZONTAL_LINE_ELEMENT = {"tag": "hr"}
 
@@ -13,6 +14,12 @@ HORIZONTAL_LINE_ELEMENT = {"tag": "hr"}
 class LarkClient:
     def __init__(self, key):
         self.url = "https://open.larksuite.com/open-apis/bot/v2/hook/{}".format(key)
+
+    def send_message(self, msg):
+        resp = requests.post(
+            url=self.url, json={"msg_type": "text", "content": {"text": msg}}
+        )
+        return resp
 
     def send_card(
         self,
@@ -51,6 +58,7 @@ class LarkClient:
         df: pd.DataFrame,
         header_formatters: dict = None,
         row_elem_formatters: dict = None,
+        width: str = "weighted",
     ) -> dict:
         if df.empty:
             return None
@@ -74,8 +82,7 @@ class LarkClient:
             columns.append(
                 {
                     "tag": "column",
-                    # "width": "auto",
-                    "width": "weighted",
+                    "width": width,
                     "weight": 1,
                     "elements": [
                         {

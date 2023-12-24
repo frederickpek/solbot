@@ -10,4 +10,5 @@ def format_number(x, sf=4) -> str:
 
 
 def price_percent_change_to_float(price_change: str):
+    """For Gecko Terminal"""
     return float(price_change.replace("%", ""))

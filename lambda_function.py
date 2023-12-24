@@ -1,210 +1,194 @@
-import asyncio
+import logging
+import traceback
 import pandas as pd
 from datetime import datetime
-from solbot.Ticker import get_sol_usd_price
+
+from solbot.secret import (
+    LARK_KEY,
+    LARK_KEY_ERROR,
+)
+from solbot.utils import format_number
+from solbot.YFinanceApi import YFinanceApi
 from solbot.LarkClient import (
     LarkClient,
+    HREF,
     GREY,
     RED,
     GREEN,
     HORIZONTAL_LINE_ELEMENT,
 )
-from solbot.GeckoTerminalApi import GeckoTerminalApi
-from solbot.utils import format_number, price_percent_change_to_float
-from solbot.secret import LARK_KEY
+from solbot.DexScreenerWsClient import (
+    DexScreenerWsClient,
+    DexScreenerPair,
+)
+
+SOLSCAN_URL = "https://solscan.io/account/"
+DEX_SCREENER = "DexScreener"
+TOP_GAINING_POOLS_LINK = "https://dexscreener.com/solana?rankBy=priceChangeH24&order=desc&minLiq=25000&min24HTxns=50&min24HVol=10000"
+TRENDING_POOLS_LINK = "https://dexscreener.com/solana?rankBy=trendingScoreH6&order=desc"
+NEWEST_POOLS_LINK = "https://dexscreener.com/solana?rankBy=volume&order=desc&maxAge=24"
 
 
 def main():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    sol_usd = YFinanceApi.get_sol_usd_price()
+    dex_screener_ws_client = DexScreenerWsClient()
+    trending_pairs = dex_screener_ws_client.get_trending_pairs(chain="solana")
+    top_gaining_pairs = dex_screener_ws_client.get_top_gaining_pairs(chain="solana")
+    newest_pairs = dex_screener_ws_client.get_newest_pairs(chain="solana")
 
-    gecko_terminal_api = GeckoTerminalApi()
+    interval_map = {"5m", "1h", "6h", "24h"}
 
-    (
-        sol_usd,
-        solana_trending_pools,
-        solana_pools_metadata,
-        solana_dex_id_map,
-        solana_latest_pools,
-    ) = loop.run_until_complete(
-        asyncio.gather(
-            get_sol_usd_price(),
-            gecko_terminal_api.get_network_trending_pools("solana"),
-            gecko_terminal_api.get_network_pools_metadata("solana"),
-            gecko_terminal_api.get_network_dex_id_map("solana"),
-            gecko_terminal_api.get_network_latest_pools("solana"),
-        )
-    )
+    def price_change_formatter(price_change):
+        color_fmt = GREY if price_change == 0 else RED if price_change < 0 else GREEN
+        return color_fmt(f"{price_change:,}" + "%")
+
+    row_elem_formatters = {x: price_change_formatter for x in interval_map}
+
+    #### SOLANA STATUS ####
 
     dt = datetime.now().strftime("%d %B %Y")
     header = f"Sol Bot Daily - {dt}"
     header_element = LarkClient.generate_header_element(header, "wathet")
-
     sol_status = (
         f"*P.S. SOL (${sol_usd:,.2f}) is but a {1000/sol_usd:.1f}x away from 1000🔥*"
     )
     sol_status_element = LarkClient.generate_markdown_element(sol_status)
 
-    interval_map = {
-        "5m": "last_5m",
-        "1h": "last_1h",
-        "6h": "last_6h",
-        "24h": "last_24h",
-    }
+    #### TRENDING POOLS ####
 
-    def price_change_formatter(price_change):
-        _m = {"+": GREEN, "-": RED}
-        sign = price_change[0]
-        color_fmt = _m.get(sign, GREY)
-        return color_fmt(price_change)
-
-    row_elem_formatters = {x: price_change_formatter for x in interval_map.keys()}
-
-    solana_pools_metadata = {
-        data["attributes"]["address"]: data for data in solana_pools_metadata
-    }
-
-    # TRENDING POOLS
-
-    rem = 5
-    pool_elements = []
+    i = 1
+    N = 3
+    trending_pair_elements = []
     ranks = {1: "🥇", 2: "🥈", 3: "🥉"}
-    solscan_url = "https://solscan.io/account/"
-    for i, pool in enumerate(solana_trending_pools):
-        if not rem:
-            break
-        attributes = pool["attributes"]
-        base_token_price_usd = attributes["base_token_price_usd"]
-        pool_name = attributes["name"]
-        base_token, _ = pool_name.split(" / ")
-        fdv_usd = attributes["fdv_usd"]
-        volume_usd_h24 = attributes["volume_usd"]["h24"]
-        relationships = pool["relationships"]
-        dex_id = relationships["dex"]["data"]["id"]
-        address = attributes["address"]
-        pool_info = [
-            f"**{ranks.get(i + 1, i + 1)}: [{pool_name}]({solscan_url + address})**",
-            f"**Dex**: {dex_id.title()}",
-            f"**Vol24h**: ${float(volume_usd_h24):,.2f}",
-            f"**FDV**: ${format_number(fdv_usd)}",
-            f"**{base_token}-USD**: ${format_number(base_token_price_usd)}",
-        ]
-        pool_metadata = solana_pools_metadata.get(address)
-        if not pool_metadata:
-            continue
+    for pair in trending_pairs:
+        dex_screener_pair = DexScreenerPair.from_dict(pair)
 
-        pool_price_changes_info = {
-            k: pool_metadata["attributes"]["price_percent_changes"][v]
-            for k, v in interval_map.items()
+        pair_name = (
+            dex_screener_pair.base_token_symbol
+            + "/"
+            + dex_screener_pair.quote_token_symbol
+        )
+        link = SOLSCAN_URL + dex_screener_pair.pair_address
+
+        pair_info = [
+            f"**{ranks.get(i, i)}: {HREF(pair_name, link)}**",
+            f"**Dex**: {dex_screener_pair.dex.title()}",
+            f"**Vol24h**: ${float(dex_screener_pair.volumn_24h or 0):,.2f}",
+            f"**MarketCap**: ${format_number(dex_screener_pair.market_cap)}",
+            f"**{dex_screener_pair.base_token_symbol}/USD**: ${format_number(dex_screener_pair.price_usd)}",
+        ]
+
+        pair_price_changes_info = {
+            "5m": dex_screener_pair.price_change_5m,
+            "1h": dex_screener_pair.price_change_1h,
+            "6h": dex_screener_pair.price_change_6h,
+            "24h": dex_screener_pair.price_change_24h,
         }
 
-        pool_price_changes_df = pd.DataFrame([pool_price_changes_info])
-        pool_price_changes_element = LarkClient.generate_table_element(
-            pool_price_changes_df, row_elem_formatters=row_elem_formatters
+        pair_price_changes_df = pd.DataFrame([pair_price_changes_info])
+        pair_price_changes_element = LarkClient.generate_table_element(
+            pair_price_changes_df, row_elem_formatters=row_elem_formatters
         )
 
-        pool_info_element = LarkClient.generate_markdown_element("\n".join(pool_info))
-        pool_elements.extend([pool_info_element, pool_price_changes_element])
-        rem -= 1
+        pair_info_element = LarkClient.generate_markdown_element("\n".join(pair_info))
+        trending_pair_elements.extend([pair_info_element, pair_price_changes_element])
 
-    pools_title = "**Trending Dex Pairs 🔥**\n<font color='grey'>Brought to you by GeckoTerminal</font>"
-    pools_title_element = LarkClient.generate_markdown_element(pools_title)
+        i += 1
+        if i > N:
+            break
 
-    solana_pools_metadata_list = [
-        (
-            price_percent_change_to_float(
-                metadata["attributes"]["price_percent_change"]
-            ),
-            metadata,
-        )
-        for _, metadata in solana_pools_metadata.items()
-    ]
-    solana_pools_metadata_list.sort(key=lambda x: x[0], reverse=True)
-
-    # TOP GAINERS
-
-    top_gainers = []
-    pool_to_address = {}
-    for _, data in solana_pools_metadata_list[:10]:
-        pool = data["attributes"]["name"]
-        top_gainers.append(
-            {
-                "Pool": pool,
-                "Dex": solana_dex_id_map.get(
-                    data["relationships"]["dex"]["data"]["id"], "?"
-                ),
-                "24h": data["attributes"]["price_percent_change"],
-            }
-        )
-        address = data["attributes"]["address"]
-        pool_to_address[pool] = address
-
-    def link_pools(pool):
-        address = pool_to_address[pool]
-        return f"**[{pool}]({solscan_url + address})**"
-
-    top_gainers_title = "**Top Gainers 🚀**"
-    top_gainers_title_element = LarkClient.generate_markdown_element(top_gainers_title)
-    top_gainers_df = pd.DataFrame(top_gainers)
-    row_elem_formatters.update({"Pool": link_pools})
-    top_gainers_element = LarkClient.generate_table_element(
-        top_gainers_df, row_elem_formatters=row_elem_formatters
+    trending_pairs_title = (
+        f"**🔥 Trending Pools** - {GREY(HREF(DEX_SCREENER, TRENDING_POOLS_LINK))}"
+    )
+    trending_pairs_title_element = LarkClient.generate_markdown_element(
+        trending_pairs_title
     )
 
-    # LATEST POOLS
+    #### TOP GAINERS ####
 
-    latest_pools = []
-    for pool_info in solana_latest_pools[:10]:
-        dex = pool_info["relationships"]["dex"]["data"]["id"]
-        pool = pool_info["attributes"]["name"]
-        address = pool_info["attributes"]["address"]
-        pool_to_address[pool] = address
-        latest_pools.append(
+    top_gainers = []
+    for pair in top_gaining_pairs[:5]:
+        dex_screener_pair = DexScreenerPair.from_dict(pair)
+        pair_name = (
+            dex_screener_pair.base_token_symbol
+            + "/"
+            + dex_screener_pair.quote_token_symbol
+        )
+        link = SOLSCAN_URL + dex_screener_pair.pair_address
+        top_gainers.append(
             {
-                "Pool": pool,
-                "Dex": dex,
+                "Pool": HREF(pair_name, link),
+                "Dex": dex_screener_pair.dex.title(),
+                "24h": dex_screener_pair.price_change_24h,
             }
         )
 
-    latest_pools_title = "**Latest Pools 🔍**"
+    top_gainers_title = (
+        f"**🚀 Top Gainers** - {GREY(HREF(DEX_SCREENER, TOP_GAINING_POOLS_LINK))}"
+    )
+    top_gainers_title_element = LarkClient.generate_markdown_element(top_gainers_title)
+    top_gainers_df = pd.DataFrame(top_gainers)
+    top_gainers_element = LarkClient.generate_table_element(
+        top_gainers_df, row_elem_formatters=row_elem_formatters, width="auto"
+    )
+
+    #### LATEST POOLS ####
+
+    latest_pools = []
+    for pair in newest_pairs[:5]:
+        dex_screener_pair = DexScreenerPair.from_dict(pair)
+        pair_name = (
+            dex_screener_pair.base_token_symbol
+            + "/"
+            + dex_screener_pair.quote_token_symbol
+        )
+        link = SOLSCAN_URL + dex_screener_pair.pair_address
+        latest_pools.append(
+            {
+                "Pool": HREF(pair_name, link),
+                "Dex": dex_screener_pair.dex.title(),
+                "24h": dex_screener_pair.price_change_24h,
+            }
+        )
+
+    latest_pools_title = (
+        f"**🔍 Latest Pools** - {GREY(HREF(DEX_SCREENER, NEWEST_POOLS_LINK))}"
+    )
     latest_pools_title_element = LarkClient.generate_markdown_element(
         latest_pools_title
     )
     latest_pools_df = pd.DataFrame(latest_pools)
     latest_pools_element = LarkClient.generate_table_element(
-        latest_pools_df, row_elem_formatters=row_elem_formatters
+        latest_pools_df, row_elem_formatters=row_elem_formatters, width="auto"
     )
 
     elements = [
-        pools_title_element,
-        *pool_elements,
+        trending_pairs_title_element,
+        *trending_pair_elements,
         HORIZONTAL_LINE_ELEMENT,
         top_gainers_title_element,
         top_gainers_element,
         HORIZONTAL_LINE_ELEMENT,
+        latest_pools_title_element,
+        latest_pools_element,
+        HORIZONTAL_LINE_ELEMENT,
+        sol_status_element,
     ]
 
-    if latest_pools:
-        elements.append(latest_pools_title_element)
-        elements.append(latest_pools_element)
-        elements.append(HORIZONTAL_LINE_ELEMENT)
-
-    elements.append(sol_status_element)
-
     lark_client = LarkClient(key=LARK_KEY)
-    resp = lark_client.send_card(header=header_element, elements=elements)
-    print(f"[lambda_function] -- {resp.text}")
-
-    return {"statusCode": 200}
+    lark_client.send_card(header=header_element, elements=elements)
 
 
 def lambda_handler(event=None, context=None):
     for _ in range(5):
         try:
             main()
-            return
+            return {"statusCode": 200}
         except Exception as err:
-            print(err)
+            error_msg = f"{err}\n{traceback.format_exc()}"
+            logging.error(error_msg)
+            LarkClient(key=LARK_KEY_ERROR).send_message(error_msg)
+    return {"statusCode": 500}
 
 
 if __name__ == "__main__":
