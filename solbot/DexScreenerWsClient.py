@@ -37,31 +37,28 @@ class DexScreenerPair:
 
     @staticmethod
     def from_dict(obj: dict) -> "DexScreenerPair":
-        try:
-            return DexScreenerPair(
-                chain=obj["chainId"],
-                dex=obj["dexId"],
-                pair_address=obj["pairAddress"],
-                base_token_symbol=obj["baseToken"]["symbol"],
-                base_token_name=obj["baseToken"]["name"],
-                base_token_address=obj["baseToken"]["address"],
-                quote_token_symbol=obj["quoteToken"]["symbol"],
-                quote_token_name=obj["quoteToken"]["name"],
-                quote_token_address=obj["quoteToken"]["address"],
-                pair_create_timestamp=obj["chainId"],
-                price_usd=obj.get("priceUsd"),
-                market_cap=obj.get("marketCap"),
-                volumn_5m=obj["volume"].get("m5"),
-                volumn_1h=obj["volume"].get("h1"),
-                volumn_6h=obj["volume"].get("h6"),
-                volumn_24h=obj["volume"].get("h24"),
-                price_change_5m=obj["priceChange"].get("m5"),
-                price_change_1h=obj["priceChange"].get("h1"),
-                price_change_6h=obj["priceChange"].get("h6"),
-                price_change_24h=obj["priceChange"].get("h24"),
-            )
-        except:
-            print(obj)
+        return DexScreenerPair(
+            chain=obj["chainId"],
+            dex=obj["dexId"],
+            pair_address=obj["pairAddress"],
+            base_token_symbol=obj["baseToken"]["symbol"],
+            base_token_name=obj["baseToken"]["name"],
+            base_token_address=obj["baseToken"]["address"],
+            quote_token_symbol=obj["quoteToken"]["symbol"],
+            quote_token_name=obj["quoteToken"]["name"],
+            quote_token_address=obj["quoteToken"]["address"],
+            pair_create_timestamp=obj["pairCreatedAt"],
+            price_usd=obj.get("priceUsd"),
+            market_cap=obj.get("marketCap"),
+            volumn_5m=obj["volume"].get("m5"),
+            volumn_1h=obj["volume"].get("h1"),
+            volumn_6h=obj["volume"].get("h6"),
+            volumn_24h=obj["volume"].get("h24"),
+            price_change_5m=obj["priceChange"].get("m5"),
+            price_change_1h=obj["priceChange"].get("h1"),
+            price_change_6h=obj["priceChange"].get("h6"),
+            price_change_24h=obj["priceChange"].get("h24"),
+        )
 
     @staticmethod
     def dicts_to_list(objs: List[dict]) -> List["DexScreenerPair"]:

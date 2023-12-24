@@ -1,3 +1,4 @@
+import time
 import logging
 import traceback
 import pandas as pd
@@ -39,10 +40,22 @@ def main():
     interval_map = {"5m", "1h", "6h", "24h"}
 
     def price_change_formatter(price_change):
+        if price_change is None:
+            return GREY("-")
         color_fmt = GREY if price_change == 0 else RED if price_change < 0 else GREEN
         return color_fmt(f"{price_change:,}" + "%")
 
     row_elem_formatters = {x: price_change_formatter for x in interval_map}
+
+    def pair_link_seedling(pair_name: str, link: str, create_timestamp: float):
+        create_timestamp = create_timestamp or 0
+        seed = ""
+        H = 3600000
+        diff = time.time() * 1000 - create_timestamp
+        if diff < 24 * H:
+            hours = int(diff / H)
+            seed = f" ({GREEN(str(hours) + 'h')})"
+        return HREF(pair_name, link) + seed
 
     #### SOLANA STATUS ####
 
@@ -69,9 +82,12 @@ def main():
             + dex_screener_pair.quote_token_symbol
         )
         link = SOLSCAN_URL + dex_screener_pair.pair_address
+        pool = pair_link_seedling(
+            pair_name, link, dex_screener_pair.pair_create_timestamp
+        )
 
         pair_info = [
-            f"**{ranks.get(i, i)}: {HREF(pair_name, link)}**",
+            f"**{ranks.get(i, i)}: {pool}**",
             f"**Dex**: {dex_screener_pair.dex.title()}",
             f"**Vol24h**: ${float(dex_screener_pair.volumn_24h or 0):,.2f}",
             f"**MarketCap**: ${format_number(dex_screener_pair.market_cap)}",
@@ -115,9 +131,12 @@ def main():
             + dex_screener_pair.quote_token_symbol
         )
         link = SOLSCAN_URL + dex_screener_pair.pair_address
+        pool = pair_link_seedling(
+            pair_name, link, dex_screener_pair.pair_create_timestamp
+        )
         top_gainers.append(
             {
-                "Pool": HREF(pair_name, link),
+                "Pool": pool,
                 "Dex": dex_screener_pair.dex.title(),
                 "24h": dex_screener_pair.price_change_24h,
             }
@@ -143,9 +162,12 @@ def main():
             + dex_screener_pair.quote_token_symbol
         )
         link = SOLSCAN_URL + dex_screener_pair.pair_address
+        pool = pair_link_seedling(
+            pair_name, link, dex_screener_pair.pair_create_timestamp
+        )
         latest_pools.append(
             {
-                "Pool": HREF(pair_name, link),
+                "Pool": pool,
                 "Dex": dex_screener_pair.dex.title(),
                 "24h": dex_screener_pair.price_change_24h,
             }
@@ -180,7 +202,7 @@ def main():
 
 
 def lambda_handler(event=None, context=None):
-    for _ in range(5):
+    for _ in range(3):
         try:
             main()
             return {"statusCode": 200}
