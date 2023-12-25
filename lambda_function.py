@@ -8,7 +8,10 @@ from solbot.secret import (
     LARK_KEY,
     LARK_KEY_ERROR,
 )
-from solbot.utils import format_number
+from solbot.utils import (
+    format_number,
+    human_readable_format,
+)
 from solbot.YFinanceApi import YFinanceApi
 from solbot.LarkClient import (
     LarkClient,
@@ -43,19 +46,25 @@ def main():
         if price_change is None:
             return GREY("-")
         color_fmt = GREY if price_change == 0 else RED if price_change < 0 else GREEN
-        return color_fmt(f"{price_change:,}" + "%")
+        return color_fmt(human_readable_format(abs(price_change)) + "%")
 
     row_elem_formatters = {x: price_change_formatter for x in interval_map}
 
-    def pair_link_seedling(pair_name: str, link: str, create_timestamp: float):
-        create_timestamp = create_timestamp or 0
-        seed = ""
+    def pair_link_seedling(dex_screener_pair: DexScreenerPair, base_url=SOLSCAN_URL):
+        pair_name = (
+            dex_screener_pair.base_token_symbol
+            + "/"
+            + dex_screener_pair.quote_token_symbol
+        )
+        link = base_url + dex_screener_pair.pair_address
+        create_timestamp = dex_screener_pair.pair_create_timestamp or 0
+        seedling = ""
         H = 3600000
         diff = time.time() * 1000 - create_timestamp
         if diff < 24 * H:
             hours = int(diff / H)
-            seed = f" ({GREEN(str(hours) + 'h')})"
-        return HREF(pair_name, link) + seed
+            seedling = f" ({GREEN(str(hours) + 'h')})"  # 🌱
+        return HREF(pair_name, link) + seedling
 
     #### SOLANA STATUS ####
 
@@ -75,22 +84,11 @@ def main():
     ranks = {1: "🥇", 2: "🥈", 3: "🥉"}
     for pair in trending_pairs:
         dex_screener_pair = DexScreenerPair.from_dict(pair)
-
-        pair_name = (
-            dex_screener_pair.base_token_symbol
-            + "/"
-            + dex_screener_pair.quote_token_symbol
-        )
-        link = SOLSCAN_URL + dex_screener_pair.pair_address
-        pool = pair_link_seedling(
-            pair_name, link, dex_screener_pair.pair_create_timestamp
-        )
-
         pair_info = [
-            f"**{ranks.get(i, i)}: {pool}**",
+            f"**{ranks.get(i, i)}: {pair_link_seedling(dex_screener_pair)}**",
             f"**Dex**: {dex_screener_pair.dex.title()}",
-            f"**Vol24h**: ${float(dex_screener_pair.volumn_24h or 0):,.2f}",
-            f"**MarketCap**: ${format_number(dex_screener_pair.market_cap)}",
+            f"**24h Volume**: ${human_readable_format(dex_screener_pair.volumn_24h or 0)}",
+            f"**Market Cap**: ${human_readable_format(dex_screener_pair.market_cap or 0)}",
             f"**{dex_screener_pair.base_token_symbol}/USD**: ${format_number(dex_screener_pair.price_usd)}",
         ]
 
@@ -122,21 +120,13 @@ def main():
 
     #### TOP GAINERS ####
 
+    num_top_gainers = 5
     top_gainers = []
-    for pair in top_gaining_pairs[:5]:
+    for pair in top_gaining_pairs[:num_top_gainers]:
         dex_screener_pair = DexScreenerPair.from_dict(pair)
-        pair_name = (
-            dex_screener_pair.base_token_symbol
-            + "/"
-            + dex_screener_pair.quote_token_symbol
-        )
-        link = SOLSCAN_URL + dex_screener_pair.pair_address
-        pool = pair_link_seedling(
-            pair_name, link, dex_screener_pair.pair_create_timestamp
-        )
         top_gainers.append(
             {
-                "Pool": pool,
+                "Pool": pair_link_seedling(dex_screener_pair),
                 "Dex": dex_screener_pair.dex.title(),
                 "24h": dex_screener_pair.price_change_24h,
             }
@@ -153,21 +143,13 @@ def main():
 
     #### LATEST POOLS ####
 
+    num_latest_pools = 5
     latest_pools = []
-    for pair in newest_pairs[:5]:
+    for pair in newest_pairs[:num_latest_pools]:
         dex_screener_pair = DexScreenerPair.from_dict(pair)
-        pair_name = (
-            dex_screener_pair.base_token_symbol
-            + "/"
-            + dex_screener_pair.quote_token_symbol
-        )
-        link = SOLSCAN_URL + dex_screener_pair.pair_address
-        pool = pair_link_seedling(
-            pair_name, link, dex_screener_pair.pair_create_timestamp
-        )
         latest_pools.append(
             {
-                "Pool": pool,
+                "Pool": pair_link_seedling(dex_screener_pair),
                 "Dex": dex_screener_pair.dex.title(),
                 "24h": dex_screener_pair.price_change_24h,
             }
